@@ -14,19 +14,25 @@ def carregar_dados():
 
 df = carregar_dados()
 
-# Campo para edição dos pontos de Junho
+# Campo para edição dos pontos de Junho (agrupado por representante)
 st.sidebar.header("Atualizar Pontos de Junho")
-for i in df.index:
-    df.at[i, "PONTOS_BRF_JUNHO"] = st.sidebar.number_input(
-        f"{df.at[i, 'REPRESENTANTE']} - BRF", min_value=0, value=int(df.at[i, "PONTOS_BRF_JUNHO"]), step=1, key=f"brf_{i}")
-    df.at[i, "PONTOS_SEARA_JUNHO"] = st.sidebar.number_input(
-        f"{df.at[i, 'REPRESENTANTE']} - SEARA", min_value=0, value=int(df.at[i, "PONTOS_SEARA_JUNHO"]), step=1, key=f"seara_{i}")
+
+representantes = sorted(df["REPRESENTANTE"].unique())
+rep_selecionado = st.sidebar.selectbox("Selecione o Representante:", representantes)
+linhas_rep = df[df["REPRESENTANTE"] == rep_selecionado].index
+
+brf_val = df.loc[linhas_rep, "PONTOS_BRF_JUNHO"].sum()
+seara_val = df.loc[linhas_rep, "PONTOS_SEARA_JUNHO"].sum()
+
+novo_brf = st.sidebar.number_input(f"Pontos BRF para {rep_selecionado}", min_value=0, value=int(brf_val), step=1)
+novo_seara = st.sidebar.number_input(f"Pontos SEARA para {rep_selecionado}", min_value=0, value=int(seara_val), step=1)
+
+if st.sidebar.button("Salvar Pontos"):
+    df.loc[linhas_rep, "PONTOS_BRF_JUNHO"] = novo_brf / len(linhas_rep)
+    df.loc[linhas_rep, "PONTOS_SEARA_JUNHO"] = novo_seara / len(linhas_rep)
+    st.sidebar.success(f"Pontos atualizados para {rep_selecionado}")
 
 # Recalcular totais
-if "TOTAL_BRF_COM_JUNHO" not in df.columns or "TOTAL_SEARA_COM_JUNHO" not in df.columns:
-    df["TOTAL_BRF_COM_JUNHO"] = 0
-    df["TOTAL_SEARA_COM_JUNHO"] = 0
-
 df["TOTAL_BRF_COM_JUNHO"] = df["PONTOS_BRF_ABRIL"] + df["PONTOS_BRF_MAIO"] + df["PONTOS_BRF_JUNHO"]
 df["TOTAL_SEARA_COM_JUNHO"] = df["PONTOS_SEARA_ABRIL"] + df["PONTOS_SEARA_MAIO"] + df["PONTOS_SEARA_JUNHO"]
 
@@ -34,34 +40,31 @@ df["TOTAL_SEARA_COM_JUNHO"] = df["PONTOS_SEARA_ABRIL"] + df["PONTOS_SEARA_MAIO"]
 regional = st.selectbox("Escolha uma regional", sorted(df['REGIONAL'].unique()))
 df_regional = df[df['REGIONAL'] == regional]
 
-# Função para mostrar top 5
-
+# Função para mostrar top 5 com responsividade
 def exibir_top(df_filtrado, titulo, coluna_pontos):
-    st.subheader(titulo)
-    df_top = df_filtrado.sort_values(by=coluna_pontos, ascending=False).head(5).copy()
-    df_top.reset_index(drop=True, inplace=True)
-    df_top.index = df_top.index + 1
-    st.dataframe(df_top[["CODIGO", "REPRESENTANTE", coluna_pontos]], height=250)
+    with st.expander(titulo):
+        df_top = df_filtrado.sort_values(by=coluna_pontos, ascending=False).head(5).copy()
+        df_top.reset_index(drop=True, inplace=True)
+        df_top.index = df_top.index + 1
+        st.dataframe(df_top[["CODIGO", "REPRESENTANTE", coluna_pontos]], height=250)
 
-    # Gráfico Top 3 com medalhas
-    top3 = df_top.head(3)
-    fig, ax = plt.subplots(figsize=(8, 4))
-    bars = ax.bar(top3["REPRESENTANTE"], top3[coluna_pontos], color=["#FFD700", "#C0C0C0", "#CD7F32"])
-    ax.set_title(f"Top 3 - {titulo}")
-    ax.set_ylabel("Pontos")
-    ax.tick_params(axis='x', labelrotation=20, labelsize=9)
-    st.pyplot(fig)
+        top3 = df_top.head(3)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        bars = ax.bar(top3["REPRESENTANTE"], top3[coluna_pontos], color=["#FFD700", "#C0C0C0", "#CD7F32"])
+        ax.set_title(f"Top 3 - {titulo}")
+        ax.set_ylabel("Pontos")
+        ax.tick_params(axis='x', labelrotation=20, labelsize=9)
+        st.pyplot(fig)
 
-# Exibir ranking regional
+# Exibir rankings regionais e gerais
 exibir_top(df_regional, f"Ranking Regional BRF - {regional}", "TOTAL_BRF_COM_JUNHO")
 exibir_top(df_regional, f"Ranking Regional SEARA - {regional}", "TOTAL_SEARA_COM_JUNHO")
 
-# Exibir ranking geral
 st.subheader("Ranking Geral")
 exibir_top(df, "Ranking Geral BRF", "TOTAL_BRF_COM_JUNHO")
 exibir_top(df, "Ranking Geral SEARA", "TOTAL_SEARA_COM_JUNHO")
 
-# Função para exportar PDF
+# Classe para exportar PDF
 class PDF(FPDF):
     def header(self):
         self.set_font("Arial", "B", 14)
